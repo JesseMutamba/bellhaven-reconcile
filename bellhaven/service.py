@@ -7,6 +7,7 @@ from .crm import CRMError, Conflict
 from .matching import match, address_key, needs_chow, material
 from .scraper import scrape_demo, scrape_website
 from .store import encode, now
+from .sandbox import WriteRejected
 
 
 class Service:
@@ -38,6 +39,14 @@ class Service:
                 if not parents:
                     raise ValueError("Configured Bellhaven parent account was not found in the complete CRM snapshot")
                 proposals, matched = match(source.facilities, accounts, self.config.parent_id, source.absence_allowed)
+                if self.config.mode == "live":
+                    for p in proposals:
+                        if p["kind"] != "investigate":
+                            p["plan"]["crm_fields"] = self.crm.payload(p["plan"]["changes"], p["plan"]["before"] if p["kind"] not in {"create", "chow"} else None)
+                            if "care_type" in p["plan"]["crm_fields"]:
+                                p["plan"]["evidence"].append("The CRM stores one primary care type: " + p["plan"]["crm_fields"]["care_type"] + ". All website offerings remain in the source evidence.")
+                            if p["kind"] in {"create", "chow"}:
+                                p["plan"]["evidence"].append("The new account's note will include a reconciliation reference so interrupted creates can be recovered without duplication.")
                 added = 0
                 with self.store.connect() as db:
                     for page in source.pages:
@@ -71,7 +80,7 @@ class Service:
             last_run["summary"] = json.loads(last_run["summary"])
         return {"mode": self.config.mode, "parent_id": self.config.parent_id,
                 "proposals": self.store.proposals(), "last_run": last_run,
-                "writes_available": self.config.mode == "demo"}
+                "writes_available": True}
 
     def decide(self, proposal_id, decision, reviewer, reason=""):
         if decision not in {"approve", "reject", "reviewed", "retry"}:
@@ -83,7 +92,8 @@ class Service:
         with self.lock():
             p = self.store.proposal(proposal_id)
             if decision == "retry":
-                if p["state"] not in {"retryable", "applying"} or self.config.mode != "demo":
+                allowed = {"retryable", "applying", "uncertain"} if self.config.mode == "live" else {"retryable", "applying"}
+                if p["state"] not in allowed:
                     raise ValueError("This proposal cannot be retried automatically")
             elif p["state"] != "pending":
                 raise ValueError("This proposal has already been decided or superseded")
@@ -100,8 +110,6 @@ class Service:
                 return self.store.proposal(proposal_id)
             if p["kind"] == "investigate":
                 raise ValueError("This item needs investigation and has no executable CRM mutation")
-            if self.config.mode != "demo":
-                raise ValueError("Sandbox writes require authenticated request-schema verification; the live adapter is currently read-only")
             with self.store.connect() as db:
                 db.execute("UPDATE proposals SET state='applying',reviewer=?,reason=?,decided_at=?,error=NULL WHERE id=?",
                            (reviewer.strip(), reason.strip(), now(), proposal_id))
@@ -112,10 +120,12 @@ class Service:
             except Conflict as exc:
                 # Partial CHOW creation must be reconciled, not silently proposed again.
                 progress = self.store.proposal(proposal_id)["progress"]
-                state = "uncertain" if p["kind"] in {"create", "chow"} and progress.get("started") else "stale"
+                state = "uncertain" if progress.get("started") and (self.config.mode == "live" or p["kind"] in {"create", "chow"}) else "stale"
                 self.store.finish(proposal_id, state, str(exc))
-            except CRMError as exc:
+            except WriteRejected as exc:
                 self.store.finish(proposal_id, "retryable", str(exc))
+            except CRMError as exc:
+                self.store.finish(proposal_id, "uncertain" if self.config.mode == "live" else "retryable", str(exc))
             except Exception:
                 self.store.finish(proposal_id, "uncertain", "Unexpected failure; inspect the audit record before taking further action")
                 raise
@@ -124,6 +134,9 @@ class Service:
             return self.store.proposal(proposal_id)
 
     def apply(self, proposal):
+        if self.config.mode == "live":
+            from .live import LiveExecutor
+            return LiveExecutor(self.store, self.crm, self.config.parent_id).apply(proposal)
         pid, kind, plan = proposal["id"], proposal["kind"], proposal["plan"]
         progress = dict(proposal["progress"])
         before, changes = plan["before"], plan["changes"]

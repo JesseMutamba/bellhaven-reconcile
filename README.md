@@ -2,7 +2,7 @@
 
 A separate project for the fictional Bellhaven assessment. It has no Lumnia code, dependencies, services, or deployment configuration.
 
-The local demo is runnable now: scrape facilities, compare CRM records, inspect evidence, and approve or reject changes. The public Bellhaven website scraper is implemented. The authenticated assessment CRM adapter is **read-only until its actual account and mutation schemas are verified with your candidate token**. No assessment CRM records have been changed.
+Scrape the public Bellhaven portfolio, compare CRM records, inspect evidence, and approve or reject changes. Both a local demo and the authenticated assessment CRM are supported. Approved assessment changes use the real account API, with a durable operation journal and read-back verification. Scans and rejections never change CRM records.
 
 ## Open in VS Code and run
 
@@ -36,23 +36,25 @@ The public scraper starts at the homepage, follows the community directory's pag
 
 ## Connecting the assessment CRM
 
-Copy `.env.example` to `.env`. Add the **candidate bearer token** and the actual Bellhaven parent account ID. Keep the token in `.env`, which is ignored by Git. Do not put it in browser JavaScript or committed files.
+Copy `.env.example` to `.env` if it does not already exist. Add the **candidate bearer token** and Bellhaven parent account ID. Keep the token in `.env`, which is ignored by Git. Do not put it in browser JavaScript or committed files.
 
-Use `APP_MODE=live` and a separate database, such as `DB_PATH=data/assessment.sqlite3`, for authenticated reads. The starter deliberately refuses to reuse a database from another mode or parent account. The adapter handles the documented page-number pagination and validates supported response envelopes. If the authenticated response has a different shape, adapt `bellhaven/sandbox.py` using the actual response.
+Use `APP_MODE=live` and a separate database, such as `DB_PATH=data/assessment.sqlite3`. The application refuses to reuse a database from another mode, parent, or candidate token. The adapter maps the observed `account_id`, `billing_*`, and `care_type` fields, and checks complete page-number pagination. Start the app, then choose **Run reconciliation** to load the real review queue.
 
-The public OpenAPI document omits POST/PATCH body schemas, response schemas, conditional writes, and idempotency guarantees. See [the integration checklist](docs/crm-contract.md) before implementing live writes. Review approvals currently write only to the local demo CRM through its HTTP API.
+The public API does not document atomic conditional writes or idempotency keys. The live executor records each operation before sending it, verifies changes with GET, and never blindly repeats an uncertain request. If a response is lost, **Check result / resume approved change** checks the earlier result and may finish the remaining approved steps. Unresolved ambiguity blocks further scans until investigated. See [the API contract and verification limits](docs/crm-contract.md).
 
 ## How decisions work
 
 - Scans read the source and CRM, then persist proposals. They never mutate CRM accounts.
 - An approval records the reviewer and plan before the API mutation starts. Rejections and investigation notes do not write to the CRM.
 - Full address matching is normalized. Fuzzy names produce investigation items; multiple entities sharing a campus remain ambiguous.
+- Directional abbreviations and street suffixes are normalized. An exact name, street, locality, and phone match can support a reviewed ZIP correction. Billing PO Boxes remain investigations rather than being silently replaced by physical addresses.
+- Website nursing/memory labels are mapped to the CRM's equivalent care labels. The CRM stores one primary care type: retain a compatible existing primary, or choose Assisted Living, then Skilled Nursing, Memory Care, Independent Living for new multi-offering records. All source offerings remain in the evidence.
 - A changed parent with revenue history **and** positive outstanding AR creates a new account. The old account keeps all fields except `chow_current_account`; its parent and balances remain intact.
 - Without both billing conditions, an approved parent change updates the existing account. Missing/invalid financial values require investigation.
 - Approved duplicates are marked `Inactive` and linked with `duplicate_of_account`. No merge or delete is performed. Duplicates with uncertain billing history require manual investigation.
 - An account absent from a complete source crawl is proposed as `Needs Review`, with a note. Absence alone never changes its parent or deactivates it. This inference is disabled by default in live mode.
 - SQLite stores decisions, source snapshots, write progress, and audit events. Identical decided proposals remain decided on reruns. Material changes can produce new proposals.
-- Changed CRM data makes an unstarted proposal stale. A fresh scan prepares another review. Interrupted demo writes reuse durable idempotency keys; concurrent local approvals are serialized.
+- Changed CRM data makes an unstarted proposal stale. A fresh scan prepares another review. Demo writes use server idempotency keys; assessment writes use a durable journal and reconciliation references. All local approvals are serialized. The external API cannot guarantee atomic updates against unrelated external editors.
 
 See [design decisions and limits](docs/design.md). Daily schedule configuration is in [schedule/daily.cron](schedule/daily.cron); it is not installed automatically.
 

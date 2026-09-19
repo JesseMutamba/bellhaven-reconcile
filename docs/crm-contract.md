@@ -1,36 +1,42 @@
-# Assessment API: verified facts and remaining integration
+# Assessment CRM integration
 
-Sources inspected September 18, 2026:
+The integration uses [the assessment API](https://analyst-assessment-production.up.railway.app/api/docs#/) at `https://analyst-assessment-production.up.railway.app/api/v1`. Authentication is `Authorization: Bearer <candidate token>`. Tokens remain in the ignored local `.env` and never enter browser code, committed fixtures, or logs.
 
-- [Interactive documentation](https://analyst-assessment-production.up.railway.app/api/docs#/)
-- [OpenAPI JSON](https://analyst-assessment-production.up.railway.app/api/openapi.json)
-- [Identity endpoint](https://analyst-assessment-production.up.railway.app/api/v1/me)
+## Observed authenticated reads
 
-The base URL is `https://analyst-assessment-production.up.railway.app/api/v1`.
-Authentication is `Authorization: Bearer <candidate token>`, confirmed by the live 401 response. The token is not included in this project.
+The candidate identity endpoint and all account-list pages were read successfully. The inspected candidate snapshot contains 121 accounts and one Bellhaven parent. No live mutation was needed to inspect those records.
 
-| Resource | Methods | Documented query parameters |
-|---|---|---|
-| `/accounts` | GET, POST | `q`, `city`, `state`, `zip`, `street`, `parent_id`, `page`, `page_size` |
-| `/accounts/{account_id}` | GET, PATCH | None |
-| `/contacts` | GET, POST | `account_id`, `q`, `page`, `page_size` |
-| `/contacts/{contact_id}` | GET, PATCH | None |
-| `/me` | GET | None |
+- `GET /accounts?page=1&page_size=50` returns `{data: [...], page, page_size, total}`.
+- `GET /accounts/{account_id}` returns a bare account object.
+- Account keys include `account_id`, `name`, `parent_id`, `parent_name`, `billing_street`, `billing_city`, `billing_state`, `billing_zip`, `care_type`, `status`, `phone`, `lifetime_revenue`, `outstanding_ar`, `chow_current_account`, `duplicate_of_account`, `note`, `created_by_candidate`, and `updated_at`.
+- The adapter reads every page, rejects duplicate IDs or changing totals, and normalizes records into the matching model.
 
-Page defaults are 1 and 50. Account creation documents HTTP 201; reads and updates document HTTP 200. The published success schemas are empty, and request bodies are not described. No credentials were available, so authenticated account data has not been inspected. Contacts are outside this ownership-reconciliation starter's scope.
+## Mutations and review
 
-## Before enabling real writes
+Only approval/resumption of an approved proposal reaches the live executor. `POST /accounts` creates a new account; `PATCH /accounts/{account_id}` sends only the approved changed fields. The mapping uses the observed `billing_*` fields and scalar `care_type`. Account IDs, financial values, timestamps, and other server-owned fields are never sent as changes.
 
-1. Authenticate `/me`; inspect one account page and an account by its returned ID. Confirm the candidate's sandbox and Bellhaven's parent ID.
-2. Verify response envelopes, pagination completion, field names/types, missing values, and whether address is `street` or `address`. The read adapter accepts list, `accounts`, `items`, or `data` list envelopes; it fails closed on unexpected shapes. This is defensive support, not a claim that every envelope was observed.
-3. Confirm POST/PATCH body semantics and allowed fields, including `parent_id`, `status`, `note`, `duplicate_of_account`, and `chow_current_account`. Preserve unknown fields and financial history.
-4. Determine whether the service supports conditional updates, revisions/ETags, idempotency keys, and lookup by a durable operation marker. The documentation does not promise any of these. Do not assume the demo's `If-Match` and `Idempotency-Key` headers work on the real service.
-5. Implement those confirmed semantics in `SandboxCRM`, then add adapter contract tests and test the billing transfer workflow against the provided candidate sandbox. Until then, its write methods and the review service's live-write gate remain disabled.
-6. If the API has no idempotency or conditional-write support, document the narrower guarantees: re-read before mutation, serialize this application's writers, record intended operations durably, reconcile uncertain creates using verified lookup fields, and stop for manual investigation after ambiguous responses. Do not automatically repeat an uncertain create.
-7. Run the real pipeline, review each proposal, and apply the supported corrections through the app. The assessment asks for corrected CRM data as well as code; the local demo does not complete that submission requirement.
+The API's public OpenAPI document omits mutation body and response schemas. Payloads are based on the observed account fields and are tested against a local contract fixture. Actual body acceptance and persistent effects are verified on each user-approved request, with API validation errors surfaced in the review app. No claim is made that a live write has succeeded until its GET read-back matches the approved operation.
 
-## Local demo contract
+The CRM supports one primary care type. Website `Short-Term Rehabilitation & Nursing` maps to `Skilled Nursing`; `Memory Support` maps to `Memory Care`. A compatible existing primary is retained. For a new facility with multiple offerings, the explicit priority is Assisted Living, Skilled Nursing, Memory Care, Independent Living. Full scraped offerings remain in proposal evidence.
 
-The internal demo API uses `GET /accounts` → `{accounts: [...], next_cursor: null}` and `GET /accounts/{id}` → account. POST creates a facility, and PATCH updates only submitted fields. Mutation calls require a durable `Idempotency-Key`; PATCH also requires `If-Match` with the account's integer version. Replaying the identical operation returns the original result; reusing a key for different input or writing a stale version returns HTTP 409.
+## Retry and concurrency guarantees
 
-Canonical demo account fields are `id`, `version`, `account_kind`, `name`, `address`, `city`, `state`, `zip`, `care_offerings`, `parent_id`, `status`, `note`, `lifetime_revenue`, `outstanding_ar`, `duplicate_of_account`, and `chow_current_account`. New accounts start with zero demo balances; historical ledger values are never copied.
+The remote API does not document `If-Match`, server idempotency keys, or transactions. The adapter does not pretend those protections exist.
+
+1. Persist the exact request, approved baseline, and operation phase in SQLite before dispatch.
+2. Re-read the affected account and dependencies immediately before each new write.
+3. Give each POST a unique reconciliation reference in `note`.
+4. Mark a sent request's outcome uncertain if the response is lost, malformed, or cannot be verified.
+5. Never resend a `sent` request. Reconcile a POST by a unique reference match across all account pages; reconcile a PATCH by GET of the target and comparison with the approved baseline plus changes.
+6. A successful read-back records the operation as applied. Resuming a multi-step CHOW can then send only its remaining approved link request.
+7. Definite HTTP 4xx rejections, except request timeout, can be retried explicitly; uncertain outcomes cannot be blindly retried.
+
+For CHOW, the old account is read again after successor creation and before linkage. Only `chow_current_account` changes on the historical record; its parent and financial values are checked as unchanged. The successor is verified before linking.
+
+Local file locks serialize this application's scans and reviewers. An external editor can still race the interval between GET and PATCH because the server has no documented compare-and-swap mechanism. Post-write verification detects mismatches; it cannot make the API atomic. A lost POST without a unique marker match remains uncertain and requires investigation.
+
+## Validation
+
+The acceptance suite exercises the authenticated schema through a local contract double: field mapping, approval-only writes, billing preservation, lost POST/PATCH responses, ambiguous reconciliation, stale records, account order changes, and pagination completeness. The existing demo HTTP tests verify the review endpoints and request guards. Public website extraction and authenticated CRM reads are also checked separately.
+
+Reviewing and applying actual CRM proposals is the final submission step. The app leaves those decisions to the reviewer; providing a token does not automatically approve any changes.

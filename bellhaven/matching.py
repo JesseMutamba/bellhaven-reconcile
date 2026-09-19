@@ -7,7 +7,8 @@ import unicodedata
 from .store import digest
 
 SUFFIXES = {"street": "st", "road": "rd", "avenue": "ave", "drive": "dr", "boulevard": "blvd",
-            "lane": "ln", "court": "ct", "north": "n", "south": "s", "east": "e", "west": "w"}
+            "lane": "ln", "court": "ct", "pike": "pk", "north": "n", "south": "s", "east": "e", "west": "w",
+            "northwest": "nw", "northeast": "ne", "southwest": "sw", "southeast": "se"}
 
 
 def normal(value):
@@ -37,13 +38,15 @@ def needs_chow(record):
 def material(value):
     if isinstance(value, dict):
         return {k: material(v) for k, v in value.items()
-                if k not in {"version", "updated_at", "source_sha256", "source_url"}}
+                if k not in {"version", "updated_at", "source_sha256", "source_url", "_raw", "parent_name"}}
     if isinstance(value, list):
         return [material(v) for v in value]
     return value
 
 
 def proposal(kind, facility, before, changes, reason, candidates=None, dependencies=None):
+    candidates = sorted(candidates or [], key=lambda a: a["id"])
+    dependencies = sorted(dependencies or [], key=lambda a: a["id"])
     plan = {"facility": facility, "before": before, "changes": changes,
             "evidence": reason, "candidates": candidates or [], "dependencies": dependencies or []}
     key = digest({"kind": kind, "subject": facility["key"], "before": material(before),
@@ -67,6 +70,13 @@ def match(facilities, accounts, parent_id, absence_allowed):
     address_counts = Counter(address_key(f) for f in facilities)
     for facility in facilities:
         exact = [a for a in active if address_key(a) == address_key(facility)]
+        zip_correction = False
+        if not exact and facility.get("phone"):
+            same_place = [a for a in active if address_key(a).rsplit("|", 1)[0] == address_key(facility).rsplit("|", 1)[0]
+                          and normal(a["name"]) == normal(facility["name"])
+                          and re.sub(r"\D", "", a.get("phone", "")) == re.sub(r"\D", "", facility["phone"])]
+            if len(same_place) == 1:
+                exact, zip_correction = same_place, True
         # Names alone never authorize a match; fuzzy candidates are investigation-only.
         near = [a for a in active if normal(a.get("state")) == normal(facility["state"])
                 and (normal(a.get("city")) == normal(facility["city"]) or str(a.get("zip", ""))[:5] == facility["zip"][:5])
@@ -109,10 +119,18 @@ def match(facilities, accounts, parent_id, absence_allowed):
                 if key == "address" and address_key(account) == address_key(facility):
                     continue
                 changes[key] = facility[key]
-        if facility.get("care_offerings") is not None and sorted(normal(x) for x in account.get("care_offerings", [])) != sorted(normal(x) for x in facility["care_offerings"]):
-            changes["care_offerings"] = facility["care_offerings"]
+        if facility.get("care_offerings") is not None:
+            aliases = {"short term rehabilitation nursing": "skilled nursing", "memory support": "memory care"}
+            care_key = lambda x: aliases.get(normal(x), normal(x))
+            current_care = {care_key(x) for x in account.get("care_offerings", [])}
+            source_care = {care_key(x) for x in facility["care_offerings"]}
+            compatible_primary = account.get("care_model") == "primary" and bool(current_care) and current_care <= source_care
+            if current_care != source_care and not compatible_primary:
+                changes["care_offerings"] = facility["care_offerings"]
         kind = "update"
         evidence = ["Full normalized street, city, state, and ZIP match.", "Website affiliation is evidence for reviewer confirmation of ownership."]
+        if zip_correction:
+            evidence[0] = "Exact name, normalized street, city, state, and phone match; the CRM ZIP differs from the website."
         if account.get("status") == "Inactive":
             proposals.append(proposal("investigate", facility, account, {}, ["Matching CRM account is inactive; investigate before reactivation."]))
             continue

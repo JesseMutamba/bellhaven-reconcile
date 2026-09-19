@@ -9,7 +9,7 @@ from .crm import HTTPCRM, DemoCRM, Conflict, CRMError
 from .demo import demo_accounts
 from .sandbox import SandboxCRM
 from .service import Service
-from .store import Store, encode
+from .store import Store, encode, digest
 
 
 class AppServer(ThreadingHTTPServer):
@@ -18,7 +18,10 @@ class AppServer(ThreadingHTTPServer):
 
 def start_server(config):
     store = Store(config.db_path)
-    store.bind_namespace(encode([config.mode, config.crm_url if config.mode == "live" else "demo", config.parent_id]))
+    namespace = [config.mode, config.crm_url if config.mode == "live" else "demo", config.parent_id]
+    if config.mode == "live":
+        namespace.append(digest(config.crm_token))
+    store.bind_namespace(encode(namespace))
     demo = DemoCRM(store)
     if config.mode == "demo":
         demo.seed(demo_accounts())

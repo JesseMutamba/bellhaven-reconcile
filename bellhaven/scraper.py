@@ -110,6 +110,7 @@ def parse_page(content, url):
             raise ScrapeError(f"Unrecognized Bellhaven address layout on {url}")
         street, city, state, zip_code = parts.groups()
         entities.append({"name": "".join(parser.heading).strip(),
+                         "telephone": parser.details.get("phone", (None, None))[0],
                          "identifier": urlsplit(url).path.rstrip("/").split("/")[-1],
                          "address": {"streetAddress": street, "addressLocality": city,
                                      "addressRegion": state, "postalCode": zip_code},
@@ -141,6 +142,8 @@ def parse_page(content, url):
             raise ScrapeError(f"Unsupported facility identifier on {url}")
         fields.update(external_id=str(identifier) if identifier is not None else None,
                       care_offerings=services, source_url=url)
+        if isinstance(entity.get("telephone"), str):
+            fields["phone"] = entity["telephone"]
         facilities.append(fields)
     return facilities, parser.links
 

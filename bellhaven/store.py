@@ -43,6 +43,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS audit (
                     id INTEGER PRIMARY KEY, proposal_id TEXT NOT NULL REFERENCES proposals(id),
                     at TEXT NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS crm_operations (
+                    operation_key TEXT PRIMARY KEY, proposal_id TEXT NOT NULL REFERENCES proposals(id),
+                    method TEXT NOT NULL, account_id TEXT, payload TEXT NOT NULL, baseline TEXT,
+                    marker TEXT, signature TEXT NOT NULL, state TEXT NOT NULL, result TEXT, updated_at TEXT NOT NULL);
             """)
             existing = db.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             if existing and existing[0] != "1":
