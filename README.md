@@ -56,7 +56,7 @@ The public API does not document atomic conditional writes or idempotency keys. 
 - SQLite stores decisions, source snapshots, write progress, and audit events. Identical decided proposals remain decided on reruns. Material changes can produce new proposals.
 - Changed CRM data makes an unstarted proposal stale. A fresh scan prepares another review. Demo writes use server idempotency keys; assessment writes use a durable journal and reconciliation references. All local approvals are serialized. The external API cannot guarantee atomic updates against unrelated external editors.
 
-See [design decisions and limits](docs/design.md). Daily schedule configuration is in [schedule/daily.cron](schedule/daily.cron); it is not installed automatically.
+See [the assessment writeup](ASSESSMENT_WRITEUP.md) for the matching approach, AI assistance, and next steps, and [design decisions and limits](docs/design.md) for implementation details. Daily schedule configuration is in [schedule/daily.cron](schedule/daily.cron); it is not installed automatically.
 
 ## Project structure
 

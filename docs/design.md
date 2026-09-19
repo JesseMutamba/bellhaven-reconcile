@@ -34,6 +34,4 @@ The review app shows field differences, financial context, candidate accounts, s
 
 The Python server binds only to loopback, checks Host/Origin, and protects browser mutations with a process token. The candidate CRM token stays server-side. Authentication for public multi-user hosting is not implemented; publishing static `dist` files alone is insufficient.
 
-Optional WebMCP tools list proposals and open their evidence; they never approve changes. Browser support is feature-detected, and these optional registrations have not been verified in a supported browser context.
-
 Backups/retention automation and an interface for manually resolving uncertain identity remain future work. Investigations can record reviewer notes; the application does not invent a new parent when evidence is inconclusive.
