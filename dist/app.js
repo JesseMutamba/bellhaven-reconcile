@@ -58,14 +58,4 @@ async function decide(event){
 $('queue').addEventListener('click',event=>{const item=event.target.closest('[data-proposal]');if(item&&!busy){selected=item.dataset.proposal;note='';render();}});
 $('filter').addEventListener('change',()=>{if(!busy)render();});
 $('scan').addEventListener('click',async()=>{if(busy)return;busy=true;$('scan').disabled=true;message('error','');message('notice','Reading the website and comparing CRM accounts…');try{const result=await api('/api/scan',{});message('notice',`${result.facilities} facilities checked. ${result.new_proposals} new proposals. Previous decisions are preserved.`);await refresh();}catch(error){message('error',error.message);}finally{busy=false;render();}});
-function registerAgentTools(){
-  if(!document.modelContext?.registerTool)return;
-  const lifecycle=new AbortController();
-  const tools=[
-    {name:'list_reconciliation_proposals',title:'List ownership proposals',description:'Read the same proposals and evidence shown in the review app. No CRM changes.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:true},execute:async()=>{await refresh();return state.proposals.map(p=>({id:p.id,kind:p.kind,state:p.state,title:p.title,plan:p.plan}));}},
-    {name:'open_reconciliation_proposal',title:'Open an ownership proposal',description:'Display a proposal and its supporting evidence. This does not approve or apply it.',inputSchema:{type:'object',properties:{id:{type:'string'}},required:['id'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:true},execute:async(input)=>{if(busy)throw new Error('An operation is running');if(!input||typeof input.id!=='string'||Object.keys(input).some(k=>k!=='id'))throw new Error('Expected a proposal id');await refresh();if(!state.proposals.some(p=>p.id===input.id))throw new Error('Proposal not found');$('filter').value='all';selected=input.id;render();return{id:selected,opened:true};}}
-  ];
-  for(const tool of tools){try{Promise.resolve(document.modelContext.registerTool(tool,{signal:lifecycle.signal})).catch(()=>{});}catch{}}
-  window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
-}
-refresh().then(registerAgentTools).catch(error=>{message('error',error.message);$('run-summary').textContent='Could not load the workspace. Refresh to retry.';});
+refresh().catch(error=>{message('error',error.message);$('run-summary').textContent='Could not load the workspace. Refresh to retry.';});

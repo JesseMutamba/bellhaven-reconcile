@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import fcntl
 import json
+import os
 
 from .config import ROOT
 from .crm import CRMError, Conflict
@@ -16,7 +17,9 @@ class Service:
 
     @contextmanager
     def lock(self):
-        with open(str(self.store.path) + ".lock", "a") as lock:
+        descriptor = os.open(str(self.store.path) + ".lock", os.O_CREAT | os.O_APPEND | os.O_WRONLY, 0o600)
+        with os.fdopen(descriptor, "a") as lock:
+            os.fchmod(lock.fileno(), 0o600)
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:

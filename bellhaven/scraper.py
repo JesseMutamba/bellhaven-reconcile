@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 from urllib.parse import urljoin, urlsplit, urldefrag
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler, HTTPSHandler
 from urllib.error import HTTPError
 from urllib.robotparser import RobotFileParser
 from .network import tls_context
@@ -15,6 +15,14 @@ USER_AGENT = "BellhavenReconcile/0.1"
 
 class ScrapeError(Exception):
     pass
+
+
+class SameOriginRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        current, target = urlsplit(req.full_url), urlsplit(newurl)
+        if (current.scheme, current.netloc) != (target.scheme, target.netloc):
+            raise ScrapeError("Cross-origin redirect blocked; configure the canonical website URL")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 @dataclass
@@ -178,7 +186,8 @@ def scrape_demo(root):
 
 
 def fetch(url):
-    with urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=20, context=tls_context()) as response:
+    opener = build_opener(SameOriginRedirect(), HTTPSHandler(context=tls_context()))
+    with opener.open(Request(url, headers={"User-Agent": USER_AGENT}), timeout=20) as response:
         if (urlsplit(response.geturl()).scheme, urlsplit(response.geturl()).netloc) != (urlsplit(url).scheme, urlsplit(url).netloc):
             raise ScrapeError("Cross-origin redirect encountered; configure the canonical website URL")
         content = response.read(5_000_001)

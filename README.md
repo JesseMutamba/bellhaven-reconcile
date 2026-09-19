@@ -71,3 +71,5 @@ data/           Ignored local databases, source snapshots, and logs
 ```
 
 This is a local application. Serve it with the Python process; publishing the static interface alone will not provide its API or database. The review server binds only to localhost and uses origin checks and per-process request tokens. It does not provide multi-user authentication or a public hosting configuration.
+
+Run it on a trusted personal machine: local processes can access the review app, and the reviewer name is an audit label, not a login. Database files and scan locks are restricted to the current OS user; the CLI and scheduled task create new snapshots and logs with private permissions. Keep the dedicated `data/` directory private and preserve file permissions in backups. CRM redirects are disabled, and website redirects are restricted to the same origin before any redirected request is sent.

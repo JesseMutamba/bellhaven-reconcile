@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from pathlib import Path
 import threading
 
@@ -10,6 +11,7 @@ from .store import encode
 
 
 def main():
+    os.umask(0o077)
     parser = argparse.ArgumentParser(description="Bellhaven ownership reconciliation")
     sub = parser.add_subparsers(dest="command", required=True)
     serve = sub.add_parser("serve", help="Start the local review app")
