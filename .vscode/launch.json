@@ -1,0 +1,1 @@
+{"version":"0.2.0","configurations":[{"name":"Bellhaven: local demo","type":"debugpy","request":"launch","module":"bellhaven","args":["serve"],"cwd":"${workspaceFolder}","console":"integratedTerminal","env":{"APP_MODE":"demo","DB_PATH":"data/bellhaven.sqlite3"}}]}

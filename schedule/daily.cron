@@ -1,0 +1,5 @@
+# Example only: not installed. Runs at 06:00 in the cron host's timezone.
+# Keep the same project .env and DB_PATH across runs so decisions persist.
+# Confirm python3 is on this PATH. Review data/daily.log for failures.
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+0 6 * * * /bin/sh /Users/jrippyjay/Projects/bellhaven-reconcile/schedule/daily.sh

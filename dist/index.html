@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="Review evidence and approve facility ownership corrections for Bellhaven."><title>Bellhaven · Ownership review</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<aside class="rail"><a class="brand" href="/" aria-label="Bellhaven review home"><span class="monogram">B</span><span>Bellhaven<small>OWNERSHIP REVIEW</small></span></a><div class="rail-label">WORKSPACE</div><div class="rail-current">Facility reconciliation</div><div class="rail-foot">Every change has a source.<br>Every decision has a record.<span id="mode" class="mode">Loading workspace</span></div></aside>
+<main>
+<header><div><div class="eyebrow">PORTFOLIO OPERATIONS</div><h1>Ownership review</h1><p id="run-summary">Loading your review workspace…</p></div><button id="scan" class="primary" disabled>Run reconciliation <span aria-hidden="true">↗</span></button></header>
+<div id="notice" class="notice" role="status" hidden></div><div id="error" class="error" role="alert" hidden></div>
+<section class="stats" aria-label="Reconciliation summary"><div><span>Website facilities</span><strong id="facilities">—</strong></div><div><span>Ready for review</span><strong id="pending">—</strong></div><div><span>Confirmed matches</span><strong id="matches">—</strong></div><div><span>Changes applied</span><strong id="applied">—</strong></div></section>
+<div class="workspace"><section class="queue" aria-label="Proposal queue"><div class="queue-heading"><h2>Review queue</h2><label class="sr-only" for="filter">Filter proposals</label><select id="filter"><option value="pending">Needs a decision</option><option value="all">All decisions</option><option value="applied">Applied</option><option value="rejected">Rejected</option></select></div><div id="queue" aria-live="polite"></div></section><section id="detail" class="detail" aria-label="Proposal details"><div class="empty"><h2>Preparing your review</h2><p>Facility changes and their supporting evidence will appear here.</p></div></section></div>
+<footer>Changes are applied only after an explicit approval. Billing history stays with its original account.</footer>
+</main></body></html>
